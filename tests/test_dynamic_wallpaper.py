@@ -247,3 +247,42 @@ def test_the_shipped_example_config_is_valid_and_complete(mdw):
     assert cfg["set"] in cfg["sets"]
     for name, mapping in cfg["sets"].items():
         assert set(mapping) == {"dawn", "day", "dusk", "night"}, name
+
+
+# --- the seeded default must name wallpapers the suite actually installs -----
+#
+# install.sh copies examples/dynamic-wallpaper.json in as the starter config, and
+# it named the `tahoe-beach` set: four macOS system wallpapers that NO repo in the
+# suite ships. It was green on the maintainer's laptop only because those files had
+# been placed there by hand, so a fresh install got a unit that failed on every
+# tick -- macarchy-install#9. Apple's own wallpapers cannot be redistributed, so the
+# default has to be built from what apple-glass ships and nothing else.
+APPLE_GLASS_SHIPS = {"1-sequoia-dusk.jpg", "2-graphite.jpg", "3-aurora.jpg"}
+PHASES = {"dawn", "day", "dusk", "night"}
+
+
+def _seeded():
+    return json.loads((ROOT / "examples" / "dynamic-wallpaper.json").read_text())
+
+
+def test_the_seeded_default_only_names_wallpapers_apple_glass_ships():
+    cfg = _seeded()
+    active = cfg["sets"][cfg["set"]]
+    missing = sorted(set(active.values()) - APPLE_GLASS_SHIPS)
+    assert not missing, (
+        f"the seeded default set {cfg['set']!r} names {missing}, which apple-glass "
+        f"does not ship; a fresh install would fail on every tick"
+    )
+
+
+def test_the_seeded_default_covers_every_phase():
+    active = _seeded()["sets"][_seeded()["set"]]
+    assert set(active) == PHASES
+
+
+def test_the_other_sets_are_kept_as_presets_not_defaults():
+    # They reference wallpapers a user supplies themselves; keeping them is useful,
+    # defaulting to one is the bug. This pins that only the active set is verified.
+    cfg = _seeded()
+    assert cfg["set"] in cfg["sets"]
+    assert len(cfg["sets"]) > 1, "the presets were dropped, not just de-defaulted"
