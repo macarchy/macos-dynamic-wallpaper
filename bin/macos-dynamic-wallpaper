@@ -28,6 +28,8 @@ CONFIG_PATH = _CONFIG_HOME / "omarchy" / "dynamic-wallpaper.json"
 THEME_NAME_PATH = _STATE_HOME / "omarchy" / "current" / "theme.name"
 CURRENT_BG_PATH = _STATE_HOME / "omarchy" / "current" / "background"
 BACKGROUNDS_ROOT = _CONFIG_HOME / "omarchy" / "backgrounds"
+# omarchy-theme-bg-next:7 -- the applied theme's own wallpapers.
+THEME_BACKGROUNDS_ROOT = _STATE_HOME / "omarchy" / "current" / "theme" / "backgrounds"
 
 OBLIQUITY = math.radians(23.4397)
 
@@ -143,6 +145,27 @@ def fixed_phase(schedule, now_local):
     return chosen
 
 
+def image_candidates(theme, name):
+    """Where a wallpaper may live, in the order omarchy itself searches.
+
+    omarchy-theme-bg-next scans USER_BACKGROUNDS_PATH and THEME_BACKGROUNDS_PATH
+    as ONE list, so those two are the real convention and we follow it rather
+    than inventing a third. The installed-theme directory is the tail: it holds
+    the same files before a theme has ever been applied, which is the state a
+    fresh machine (and every CI runner) is in -- macarchy-install#9, where this
+    tool's unit failed on every tick because only the first path was tried.
+
+    Copying the files into the first directory instead would have worked once and
+    then duplicated every theme wallpaper in `omarchy theme bg next` and in the
+    switcher's thumbnails, because omarchy merges the two directories.
+    """
+    return [
+        BACKGROUNDS_ROOT / theme / name,                       # the user's own
+        THEME_BACKGROUNDS_ROOT / name,                         # the applied theme
+        _CONFIG_HOME / "omarchy" / "themes" / theme / "backgrounds" / name,
+    ]
+
+
 def resolve_image(cfg, phase):
     sets = cfg.get("sets", {})
     set_name = cfg.get("set")
@@ -151,10 +174,12 @@ def resolve_image(cfg, phase):
     mapping = sets[set_name]
     if phase not in mapping:
         die(f"phase '{phase}' is missing from set '{set_name}'")
-    path = BACKGROUNDS_ROOT / cfg.get("theme", "") / mapping[phase]
-    if not path.exists():
-        die(f"wallpaper not found: {path}")
-    return path
+    for path in image_candidates(cfg.get("theme", ""), mapping[phase]):
+        if path.exists():
+            return path
+    die(f"wallpaper not found: {mapping[phase]} (looked in "
+        + ", ".join(str(p.parent) for p in image_candidates(cfg.get("theme", ""), mapping[phase]))
+        + ")")
 
 
 def main(argv):

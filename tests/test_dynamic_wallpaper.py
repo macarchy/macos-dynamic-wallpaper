@@ -286,3 +286,60 @@ def test_the_other_sets_are_kept_as_presets_not_defaults():
     cfg = _seeded()
     assert cfg["set"] in cfg["sets"]
     assert len(cfg["sets"]) > 1, "the presets were dropped, not just de-defaulted"
+
+
+# --- a wallpaper is resolved the way omarchy resolves one -------------------
+#
+# The tool used to look ONLY in ~/.config/omarchy/backgrounds/<theme>/, which
+# nothing populates until `omarchy theme set` has run at least once -- so on a
+# fresh machine its unit failed on every tick (macarchy-install#9). It now walks
+# the same two directories omarchy-theme-bg-next merges, then the installed-theme
+# directory, which holds the files before any theme has been applied.
+def _cfg(tmp_path, name="w.jpg"):
+    (tmp_path / ".config" / "omarchy").mkdir(parents=True)
+    return {"theme": "apple-glass", "set": "s", "sets": {"s": {"day": name}}}
+
+
+def _mod_at(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / ".local" / "state"))
+    loader = importlib.machinery.SourceFileLoader("mdw_paths", str(SCRIPT))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def test_the_user_directory_still_wins(tmp_path, monkeypatch):
+    mod = _mod_at(tmp_path, monkeypatch)
+    cfg = _cfg(tmp_path)
+    want = tmp_path / ".config" / "omarchy" / "backgrounds" / "apple-glass" / "w.jpg"
+    want.parent.mkdir(parents=True); want.write_bytes(b"x")
+    assert mod.resolve_image(cfg, "day") == want
+
+
+def test_the_installed_theme_is_used_before_any_theme_has_been_applied(tmp_path, monkeypatch):
+    # The fresh-machine case: nothing has run `omarchy theme set`, so only the
+    # installed theme directory has the file. This is what CI reproduces.
+    mod = _mod_at(tmp_path, monkeypatch)
+    cfg = _cfg(tmp_path)
+    want = tmp_path / ".config" / "omarchy" / "themes" / "apple-glass" / "backgrounds" / "w.jpg"
+    want.parent.mkdir(parents=True); want.write_bytes(b"x")
+    assert mod.resolve_image(cfg, "day") == want
+
+
+def test_the_applied_theme_outranks_the_installed_copy(tmp_path, monkeypatch):
+    mod = _mod_at(tmp_path, monkeypatch)
+    cfg = _cfg(tmp_path)
+    applied = tmp_path / ".local" / "state" / "omarchy" / "current" / "theme" / "backgrounds" / "w.jpg"
+    applied.parent.mkdir(parents=True); applied.write_bytes(b"x")
+    installed = tmp_path / ".config" / "omarchy" / "themes" / "apple-glass" / "backgrounds" / "w.jpg"
+    installed.parent.mkdir(parents=True); installed.write_bytes(b"x")
+    assert mod.resolve_image(cfg, "day") == applied
+
+
+def test_missing_everywhere_names_every_place_it_looked(tmp_path, monkeypatch):
+    mod = _mod_at(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit):
+        mod.resolve_image(_cfg(tmp_path), "day")
