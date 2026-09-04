@@ -1,7 +1,7 @@
 {
   "theme": "apple-glass",
   "mode": "solar",
-  "latitude": 37.3230,
+  "latitude": 37.323,
   "longitude": -122.0322,
   "twilight_margin_minutes": 45,
   "schedule": {
@@ -10,8 +10,14 @@
     "dusk": "19:00",
     "night": "21:30"
   },
-  "set": "tahoe-beach",
+  "set": "glass",
   "sets": {
+    "glass": {
+      "dawn": "1-sequoia-dusk.jpg",
+      "day": "3-aurora.jpg",
+      "dusk": "1-sequoia-dusk.jpg",
+      "night": "2-graphite.jpg"
+    },
     "tahoe-beach": {
       "dawn": "26-tahoe-beach-dawn.jpg",
       "day": "26-tahoe-beach-day.jpg",
