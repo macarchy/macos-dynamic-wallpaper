@@ -1,0 +1,24 @@
+post_install() {
+  cat <<'NOTE'
+
+  macos-dynamic-wallpaper is installed. pacman cannot write into your $HOME, so
+  the starter config is a template — take it and set your coordinates:
+
+    mkdir -p ~/.config/omarchy
+    cp /usr/share/macos-dynamic-wallpaper/dynamic-wallpaper.json ~/.config/omarchy/
+    $EDITOR ~/.config/omarchy/dynamic-wallpaper.json     # latitude / longitude
+
+    systemctl --user enable --now macos-dynamic-wallpaper.timer
+
+  Check it with:  macos-dynamic-wallpaper status
+
+NOTE
+}
+
+post_upgrade() {
+  systemctl --user try-restart macos-dynamic-wallpaper.service 2>/dev/null || true
+}
+
+pre_remove() {
+  systemctl --user disable --now macos-dynamic-wallpaper.timer 2>/dev/null || true
+}
