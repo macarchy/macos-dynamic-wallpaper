@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/macarchy/macos-dynamic-wallpaper/compare/v0.1.1...v0.2.0) (2026-09-04)
+
+
+### Features
+
+* **pkg:** publish an installable package on every release ([#6](https://github.com/macarchy/macos-dynamic-wallpaper/issues/6)) ([c696b84](https://github.com/macarchy/macos-dynamic-wallpaper/commit/c696b845ec72cf95578fbffe929fc5aa11f8c9da))
+
 ## [0.1.1](https://github.com/macarchy/macos-dynamic-wallpaper/compare/v0.1.0...v0.1.1) (2026-09-04)
 
 
