@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/macarchy/macos-dynamic-wallpaper/compare/v0.1.0...v0.1.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* resolve a wallpaper the way omarchy resolves one ([#5](https://github.com/macarchy/macos-dynamic-wallpaper/issues/5)) ([1efaa51](https://github.com/macarchy/macos-dynamic-wallpaper/commit/1efaa51c09cffb4f0aa1edac47609818d29704bd))
+* seed a default whose wallpapers are actually installed ([#3](https://github.com/macarchy/macos-dynamic-wallpaper/issues/3)) ([106955c](https://github.com/macarchy/macos-dynamic-wallpaper/commit/106955c2ddde33f5406c33ad728885b7af6de4cf))
+
 ## [0.1.0](https://github.com/macarchy/macos-dynamic-wallpaper/compare/v0.1.0...v0.1.0) (2026-09-04)
 
 
