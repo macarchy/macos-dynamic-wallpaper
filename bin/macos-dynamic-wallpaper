@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""macOS-style dynamic desktop for Omarchy.
+
+Picks the wallpaper matching the current time of day and applies it through
+omarchy-theme-bg-set. Driven either by real solar times for a configured
+location ("solar") or by fixed clock times ("fixed").
+"""
+from __future__ import annotations
+
+import json
+import math
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+# XDG-first, like macarchy-sun, which reads the same config file. Honouring the
+# variables is also what lets the tests run against a temp tree instead of the
+# real desktop.
+_HOME = Path(os.environ.get("HOME", "~")).expanduser()
+_CONFIG_HOME = Path(os.environ["XDG_CONFIG_HOME"]).expanduser() \
+    if os.environ.get("XDG_CONFIG_HOME") else _HOME / ".config"
+_STATE_HOME = Path(os.environ["XDG_STATE_HOME"]).expanduser() \
+    if os.environ.get("XDG_STATE_HOME") else _HOME / ".local" / "state"
+
+CONFIG_PATH = _CONFIG_HOME / "omarchy" / "dynamic-wallpaper.json"
+THEME_NAME_PATH = _STATE_HOME / "omarchy" / "current" / "theme.name"
+CURRENT_BG_PATH = _STATE_HOME / "omarchy" / "current" / "background"
+BACKGROUNDS_ROOT = _CONFIG_HOME / "omarchy" / "backgrounds"
+
+OBLIQUITY = math.radians(23.4397)
+
+
+def die(msg, code=1):
+    print(f"macos-dynamic-wallpaper: {msg}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def load_config():
+    if not CONFIG_PATH.exists():
+        die(f"missing config: {CONFIG_PATH}")
+    try:
+        return json.loads(CONFIG_PATH.read_text())
+    except json.JSONDecodeError as exc:
+        die(f"invalid JSON in {CONFIG_PATH}: {exc}")
+
+
+def current_theme():
+    try:
+        return THEME_NAME_PATH.read_text().strip()
+    except OSError:
+        return ""
+
+
+# --- solar geometry: NOAA sunrise equation, good to about a minute ---
+# ponytail: macarchy-core's `macarchy-sun` carries the same ~50 lines. Sharing
+# them would mean this tool depending on the Apple-hardware suite, which is the
+# wrong direction -- macarchy-sun already reads THIS tool's config file. Two
+# copies, one owner each. Extract a package only if a third caller appears.
+
+def _to_julian(dt):
+    return dt.timestamp() / 86400.0 + 2440587.5
+
+
+def _from_julian(j):
+    return datetime.fromtimestamp((j - 2440587.5) * 86400.0, tz=timezone.utc)
+
+
+def solar_pair(lat, lon, when, altitude):
+    """Rise/set UTC datetimes for a sun altitude; 'up'/'down' if never crossed."""
+    n = round(_to_julian(when) - 2451545.0 + 0.0008)
+    j_star = n - lon / 360.0
+    m = (357.5291 + 0.98560028 * j_star) % 360.0
+    m_rad = math.radians(m)
+    c = (1.9148 * math.sin(m_rad) + 0.0200 * math.sin(2 * m_rad)
+         + 0.0003 * math.sin(3 * m_rad))
+    lam = math.radians((m + c + 180.0 + 102.9372) % 360.0)
+    j_transit = 2451545.0 + j_star + 0.0053 * math.sin(m_rad) - 0.0069 * math.sin(2 * lam)
+    sin_dec = math.sin(lam) * math.sin(OBLIQUITY)
+    dec = math.asin(sin_dec)
+    phi = math.radians(lat)
+    cos_omega = ((math.sin(math.radians(altitude)) - math.sin(phi) * sin_dec)
+                 / (math.cos(phi) * math.cos(dec)))
+    if cos_omega > 1.0:
+        return "down"
+    if cos_omega < -1.0:
+        return "up"
+    omega = math.degrees(math.acos(cos_omega)) / 360.0
+    return _from_julian(j_transit - omega), _from_julian(j_transit + omega)
+
+
+def _windows(lat, lon, when, margin):
+    """Phase boundaries for the solar day around `when`, or "up"/"down"."""
+    sun = solar_pair(lat, lon, when, -0.833)
+    if not isinstance(sun, tuple):
+        return sun
+    civil = solar_pair(lat, lon, when, -6.0)
+    sunrise, sunset = sun
+    if isinstance(civil, tuple):
+        dawn_start, dusk_end = civil
+    else:
+        dawn_start, dusk_end = sunrise - margin, sunset + margin
+    day_start = sunrise + margin
+    day_end = max(sunset - margin, day_start)
+    return dawn_start, day_start, day_end, dusk_end
+
+
+def solar_phase(lat, lon, now, margin_minutes):
+    margin = timedelta(minutes=margin_minutes)
+    today = _windows(lat, lon, now, margin)
+    if not isinstance(today, tuple):
+        return "day" if today == "up" else "night"
+    # A solar day's sunset can fall after midnight UTC (western longitudes) and
+    # its sunrise before it (eastern), so the window holding `now` may belong to
+    # the neighbouring solar day. Checking those too is what keeps every phase
+    # reachable: at longitude -122 dusk never fired, at +140 dawn never did.
+    for candidate in (today, _windows(lat, lon, now - timedelta(days=1), margin),
+                      _windows(lat, lon, now + timedelta(days=1), margin)):
+        if not isinstance(candidate, tuple):
+            continue
+        dawn_start, day_start, day_end, dusk_end = candidate
+        if dawn_start <= now < day_start:
+            return "dawn"
+        if day_start <= now < day_end:
+            return "day"
+        if day_end <= now < dusk_end:
+            return "dusk"
+    return "night"
+
+
+def fixed_phase(schedule, now_local):
+    if not schedule:
+        die("fixed mode needs a 'schedule' in the config")
+    minutes = now_local.hour * 60 + now_local.minute
+    entries = sorted(
+        (int(v.split(":")[0]) * 60 + int(v.split(":")[1]), k) for k, v in schedule.items()
+    )
+    chosen = entries[-1][1]  # before the first entry we are still in yesterday's last phase
+    for start, name in entries:
+        if minutes >= start:
+            chosen = name
+    return chosen
+
+
+def resolve_image(cfg, phase):
+    sets = cfg.get("sets", {})
+    set_name = cfg.get("set")
+    if set_name not in sets:
+        die(f"set '{set_name}' is not defined in the config")
+    mapping = sets[set_name]
+    if phase not in mapping:
+        die(f"phase '{phase}' is missing from set '{set_name}'")
+    path = BACKGROUNDS_ROOT / cfg.get("theme", "") / mapping[phase]
+    if not path.exists():
+        die(f"wallpaper not found: {path}")
+    return path
+
+
+def main(argv):
+    action = argv[1] if len(argv) > 1 and not argv[1].startswith("-") else "apply"
+    cfg = load_config()
+    theme = cfg.get("theme", "")
+    mode = cfg.get("mode", "solar")
+    now_utc = datetime.now(timezone.utc)
+    now_local = datetime.now().astimezone()
+    lat = cfg.get("latitude")
+    lon = cfg.get("longitude")
+
+    if mode == "solar":
+        if lat is None or lon is None:
+            die("solar mode needs 'latitude' and 'longitude' in the config")
+        phase = solar_phase(float(lat), float(lon), now_utc,
+                            cfg.get("twilight_margin_minutes", 45))
+    elif mode == "fixed":
+        phase = fixed_phase(cfg.get("schedule", {}), now_local)
+    else:
+        die(f"unknown mode: {mode}")
+
+    image = resolve_image(cfg, phase)
+    active_theme = current_theme()
+
+    if action == "status":
+        print(f"mode:    {mode}")
+        print(f"theme:   {active_theme}" + (f"  (managing: {theme})" if theme else ""))
+        print(f"now:     {now_local:%Y-%m-%d %H:%M %Z}")
+        if mode == "solar":
+            fmt = lambda x: x.astimezone().strftime("%H:%M")
+            sun = solar_pair(float(lat), float(lon), now_utc, -0.833)
+            civil = solar_pair(float(lat), float(lon), now_utc, -6.0)
+            print(f"location: {lat}, {lon}")
+            if isinstance(civil, tuple):
+                print(f"dawn:    {fmt(civil[0])}")
+            if isinstance(sun, tuple):
+                print(f"sunrise: {fmt(sun[0])}")
+                print(f"sunset:  {fmt(sun[1])}")
+            if isinstance(civil, tuple):
+                print(f"dusk:    {fmt(civil[1])}")
+        print(f"set:     {cfg.get('set')}")
+        print(f"phase:   {phase}")
+        print(f"image:   {image}")
+        return 0
+
+    if theme and active_theme != theme:
+        return 0  # a different theme is active; leave its background alone
+
+    try:
+        current = CURRENT_BG_PATH.resolve()
+    except OSError:
+        current = None
+    if current == image.resolve() and "--force" not in argv:
+        return 0
+
+    subprocess.run(["omarchy-theme-bg-set", str(image)], check=False)
+    # The transparent bar picks its text colour from the screen this just
+    # repainted, so poke the picker rather than leaving it to notice on its own
+    # next tick -- that lag is where a black-on-night-water bar came from. The
+    # unit is ordered After= this service and started --no-block, so it samples
+    # a settled screen once this run has exited.
+    subprocess.run(
+        ["systemctl", "--user", "start", "--no-block", "macarchy-bar-contrast.service"],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

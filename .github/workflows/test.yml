@@ -1,0 +1,37 @@
+name: tests
+
+# 28 tests in well under a second. The tool is pure standard library and the
+# suite runs against a temporary XDG tree, so a plain runner is enough -- no
+# desktop, no systemd, no wallpapers.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pytest
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pytest
+
+      - run: python3 -m pytest tests/ -q
+
+      # The tool has no .py extension, so nothing else would catch a syntax
+      # error before the timer does, at which point it fails silently.
+      - run: python3 -m py_compile bin/macos-dynamic-wallpaper
+
+      - run: bash -n install.sh

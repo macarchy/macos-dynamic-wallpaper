@@ -1,0 +1,8 @@
+[Unit]
+Description=Set the macOS-style wallpaper for the current time of day
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/macos-dynamic-wallpaper apply

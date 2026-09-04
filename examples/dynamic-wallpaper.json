@@ -1,0 +1,46 @@
+{
+  "theme": "apple-glass",
+  "mode": "solar",
+  "latitude": 37.3230,
+  "longitude": -122.0322,
+  "twilight_margin_minutes": 45,
+  "schedule": {
+    "dawn": "06:00",
+    "day": "09:00",
+    "dusk": "19:00",
+    "night": "21:30"
+  },
+  "set": "tahoe-beach",
+  "sets": {
+    "tahoe-beach": {
+      "dawn": "26-tahoe-beach-dawn.jpg",
+      "day": "26-tahoe-beach-day.jpg",
+      "dusk": "26-tahoe-beach-dusk.jpg",
+      "night": "26-tahoe-beach-night.jpg"
+    },
+    "sequoia": {
+      "dawn": "15-sequoia-sunrise.jpg",
+      "day": "15-sequoia-light.jpg",
+      "dusk": "15-sequoia-sunrise.jpg",
+      "night": "15-sequoia-dark.jpg"
+    },
+    "big-sur": {
+      "dawn": "11-big-sur-day.jpg",
+      "day": "11-big-sur-day.jpg",
+      "dusk": "11-big-sur-night.jpg",
+      "night": "11-big-sur-night.jpg"
+    },
+    "golden-gate": {
+      "dawn": "27-golden-gate.jpg",
+      "day": "27-golden-gate-bridge.jpg",
+      "dusk": "27-golden-gate.jpg",
+      "night": "27-golden-gate-dark.jpg"
+    },
+    "tahoe": {
+      "dawn": "26-tahoe-light.jpg",
+      "day": "26-tahoe-light.jpg",
+      "dusk": "26-tahoe-dark.jpg",
+      "night": "26-tahoe-dark.jpg"
+    }
+  }
+}
