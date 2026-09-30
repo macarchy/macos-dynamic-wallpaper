@@ -1,3 +1,5 @@
+![macos-dynamic-wallpaper banner](.github/banner.png)
+
 # macos-dynamic-wallpaper
 
 The macOS dynamic desktop, for [Omarchy](https://omarchy.org): one wallpaper
